@@ -83,7 +83,7 @@ class trainercore(object):
         }
 
         data_keys = OrderedDict({
-            'data2d': 'data2d', 
+            'data2d': 'data2d',
             'data3d': 'data3d'
             })
 
@@ -148,7 +148,7 @@ class trainercore(object):
 
         self._decoder_2d = decoders.decoder2D(
                 n_planes          = FLAGS.NPLANES,
-                n_initial_filters = 2**FLAGS.ENCODER_2D_NETWORK_DEPTH,
+                n_initial_filters = FLAGS.ENCODER_2D_N_INITIAL_FILTERS * 2**FLAGS.ENCODER_2D_NETWORK_DEPTH,
                 batch_norm        = FLAGS.BATCH_NORM,
                 use_bias          = FLAGS.USE_BIAS,
                 residual          = FLAGS.RESIDUAL,
@@ -157,7 +157,7 @@ class trainercore(object):
                 # latent_space      = FLAGS.LATENT_SPACE
             )
         self._decoder_3d = decoders.decoder3D(
-                n_initial_filters = 2**FLAGS.ENCODER_3D_NETWORK_DEPTH,
+                n_initial_filters = FLAGS.ENCODER_3D_N_INITIAL_FILTERS * 2**FLAGS.ENCODER_3D_NETWORK_DEPTH,
                 batch_norm        = FLAGS.BATCH_NORM,
                 use_bias          = FLAGS.USE_BIAS,
                 residual          = FLAGS.RESIDUAL,
@@ -173,11 +173,11 @@ class trainercore(object):
             "decoder_3d" : self._decoder_3d
         }
 
-        if FLAGS.TRAINING: 
+        if FLAGS.TRAINING:
             for net in self._nets: self._nets[net].train(True)
 
-        self._criterion = torch.nn.MSELoss(reduction='sum')
-        
+        self._criterion = torch.nn.MSELoss(reduction='mean')
+
         self._log_keys = ['loss_2D_AE', 'loss_3D_AE']
         # self._log_keys = ['loss_2D_AE', 'loss_3D_AE', 'latent-loss']
 
@@ -221,7 +221,8 @@ class trainercore(object):
         if FLAGS.COMPUTE_MODE == "CPU":
             pass
         if FLAGS.COMPUTE_MODE == "GPU":
-            self._net.cuda()
+            for net in self._nets:
+                self._nets[net].cuda()
 
 
 
@@ -240,7 +241,7 @@ class trainercore(object):
                 self._opt = torch.optim.Adam(all_parameters)
             else:
                 self._opt = torch.optim.Adam(all_parameters, FLAGS.LEARNING_RATE)
-        else:            
+        else:
             # Create an optimizer:
             if FLAGS.LEARNING_RATE <= 0:
                 self._opt = torch.optim.SGD(all_parameters)
@@ -312,7 +313,7 @@ class trainercore(object):
 
     def save_model(self):
         '''Save the model to file
-        
+
         '''
 
         current_file_path, checkpoint_file_path = self.get_model_filepath()
@@ -346,7 +347,7 @@ class trainercore(object):
                         past_checkpoint_files.update({int(vals[0]) : vals[1].replace(' ', '')})
         except:
             pass
-        
+
 
         # Remove the oldest checkpoints while the number is greater than n_keep
         while len(past_checkpoint_files) >= n_keep:
@@ -367,8 +368,8 @@ class trainercore(object):
 
     def get_model_filepath(self):
         '''Helper function to build the filepath of a model for saving and restoring:
-        
-        
+
+
         '''
 
         # Find the base path of the log directory
@@ -393,6 +394,7 @@ class trainercore(object):
 
         # We calculate 3 losses:
 
+
         loss_2D_AE = self._criterion(input=forward_results['decoded_2d'], target=minibatch_data['data2d'])
         loss_3D_AE = self._criterion(input=forward_results['decoded_3d'], target=minibatch_data['data3d'])
 
@@ -404,7 +406,7 @@ class trainercore(object):
             'loss_2D_AE'  : loss_2D_AE,
             'loss_3D_AE'  : loss_3D_AE,
             # 'latent_loss' : latent_loss,
-        }        
+        }
 
         loss['total_loss'] = loss_2D_AE + loss_3D_AE
         # loss['total_loss'] = loss_2D_AE + loss_3D_AE + latent_loss
@@ -420,7 +422,7 @@ class trainercore(object):
         for key in loss:
             metrics[key] = loss[key] / FLAGS.LOSS_SCALE
 
-        # metrics['loss']     = loss.data / FLAGS.LOSS_SCALE 
+        # metrics['loss']     = loss.data / FLAGS.LOSS_SCALE
         # accuracy = self._calculate_accuracy(logits, labels)
         # metrics.update(accuracy)
 
@@ -431,7 +433,7 @@ class trainercore(object):
 
 
         if self._global_step % FLAGS.LOGGING_ITERATION == 0:
-            
+
             self._current_log_time = datetime.datetime.now()
 
             # Build up a string for logging:
@@ -439,11 +441,11 @@ class trainercore(object):
                 s = ", ".join(["{0}: {1:.3}".format(key, metrics[key]) for key in self._log_keys])
             else:
                 s = ", ".join(["{0}: {1:.3}".format(key, metrics[key]) for key in metrics])
-      
+
 
             try:
                 s += " ({:.2}s / {:.2} IOs / {:.2})".format(
-                    (self._current_log_time - self._previous_log_time).total_seconds(), 
+                    (self._current_log_time - self._previous_log_time).total_seconds(),
                     metrics['io_fetch_time'],
                     metrics['step_time'])
             except:
@@ -510,21 +512,21 @@ class trainercore(object):
                 # Values get mapped to gray scale, so put them in the range (0,1)
                 labels[labels == 1] = 0.5
                 labels[labels == 2] = 1.0
-                
-                prediction[prediction == 1] = 0.5                
-                prediction[prediction == 2] = 1.0                
+
+                prediction[prediction == 1] = 0.5
+                prediction[prediction == 2] = 1.0
 
 
                 if saver == "test":
-                    self._aux_saver.add_image("prediction/plane_{}".format(plane), 
+                    self._aux_saver.add_image("prediction/plane_{}".format(plane),
                         prediction, self._global_step)
-                    self._aux_saver.add_image("label/plane_{}".format(plane), 
+                    self._aux_saver.add_image("label/plane_{}".format(plane),
                         labels, self._global_step)
-                    
+
                 else:
-                    self._saver.add_image("prediction/plane_{}".format(plane), 
+                    self._saver.add_image("prediction/plane_{}".format(plane),
                         prediction, self._global_step)
-                    self._saver.add_image("label/plane_{}".format(plane), 
+                    self._saver.add_image("label/plane_{}".format(plane),
                         labels, self._global_step)
 
         return
@@ -560,11 +562,6 @@ class trainercore(object):
         # Begin preloading the next data:
         self._larcv_interface.prepare_next(mode)
 
-        print(minibatch_data['data2d'].shape)
-        print(minibatch_data['data3d'].shape)
-
-
-
         return minibatch_data
 
 
@@ -599,7 +596,7 @@ class trainercore(object):
 
         for key in minibatch_data:
             if key == 'entries' or key == 'event_ids':
-                continue  
+                continue
             else:
                 # minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
                 minibatch_data[key] = torch.tensor(minibatch_data[key], device=device)
@@ -696,7 +693,7 @@ class trainercore(object):
 
         # Compute any necessary metrics:
         metrics = self._compute_metrics(forward_results, loss)
-        
+
 
 
         # Add the global step / second to the tensorboard log:
@@ -722,11 +719,11 @@ class trainercore(object):
         metrics['step_time'] = (global_end_time - step_start_time).total_seconds()
 
 
-        self.log(metrics, saver="train") 
+        self.log(metrics, saver="train")
 
         if verbose: print("Completed Log")
 
-        self.summary(metrics, saver="train")       
+        self.summary(metrics, saver="train")
         self.summary_images(forward_results, saver="train")
         if verbose: print("Summarized")
 
@@ -756,7 +753,7 @@ class trainercore(object):
             # Fetch the next batch of data with larcv
             # (Make sure to pull from the validation set)
             io_start_time = datetime.datetime.now()
-            minibatch_data = self.fetch_next_batch('aux')        
+            minibatch_data = self.fetch_next_batch('aux')
             io_end_time = datetime.datetime.now()
 
             forward_results = self.forward_pass(minibatch_data)
@@ -767,7 +764,7 @@ class trainercore(object):
 
             # Compute any necessary metrics:
             metrics = self._compute_metrics(forward_results, loss)
-        
+
 
             self.log(metrics, saver="test")
             self.summary(metrics, saver="test")
@@ -779,7 +776,7 @@ class trainercore(object):
             return
 
 
- 
+
     def stop(self):
         # Mostly, this is just turning off the io:
         self._larcv_interface.stop()
@@ -807,12 +804,12 @@ class trainercore(object):
 
         # Convert the input data to torch tensors
         minibatch_data = self.to_torch(minibatch_data)
-        
+
 
         # Run a forward pass of the model on the input image:
         with torch.no_grad():
             forward_results = self.forward_pass(minibatch_data)
-            
+
 
 
         # If there is an aux file, for ana that means an output file.
@@ -855,9 +852,9 @@ class trainercore(object):
 
                 # Ravel the cooridinates into flat indexes:
                 indexes = self._y_spatial_size * this_coords[:,1] + this_coords[:,2]
-                meta = [0, 0, 
-                        self._y_spatial_size, self._x_spatial_size, 
-                        self._y_spatial_size, self._x_spatial_size, 
+                meta = [0, 0,
+                        self._y_spatial_size, self._x_spatial_size,
+                        self._y_spatial_size, self._x_spatial_size,
                         plane,
                     ]
                 # print("Indexes shape: ", indexes.shape)
@@ -867,9 +864,9 @@ class trainercore(object):
                     # print("Write features shape: ", writeable_features.shape)
 
                     list_of_dicts_by_label[feature_type][plane] = {
-                        'value' : numpy.asarray(writeable_features).flatten(), 
+                        'value' : numpy.asarray(writeable_features).flatten(),
                         'index' : numpy.asarray(indexes.flatten()),
-                        'meta'  : meta 
+                        'meta'  : meta
                     }
 
 
@@ -877,23 +874,23 @@ class trainercore(object):
                 this_prediction = prediction[locs]
                 # print("Sub prediction shape: ", this_prediction.shape)
                 list_of_dicts_by_label['pred'][plane] = {
-                    'value' : numpy.asarray(this_prediction).flatten(), 
+                    'value' : numpy.asarray(this_prediction).flatten(),
                     'index' : numpy.asarray(indexes.flatten()),
-                    'meta'  : meta 
+                    'meta'  : meta
                 }
 
 
             for l in [0,1,2]:
-                self._larcv_interface.write_output(data=list_of_dicts_by_label[l], 
+                self._larcv_interface.write_output(data=list_of_dicts_by_label[l],
                     datatype='sparse2d', producer='label_{}'.format(l),
-                    entries=minibatch_data['entries'], 
+                    entries=minibatch_data['entries'],
                     event_ids=minibatch_data['event_ids'])
-            
-            self._larcv_interface.write_output(data=list_of_dicts_by_label['pred'], 
+
+            self._larcv_interface.write_output(data=list_of_dicts_by_label['pred'],
                 datatype='sparse2d', producer='prediction'.format(l),
-                entries=minibatch_data['entries'], 
+                entries=minibatch_data['entries'],
                 event_ids=minibatch_data['event_ids'])
-                
+
         # If the input data has labels available, compute the metrics:
         if 'label' in minibatch_data:
             # Compute the loss

@@ -29,7 +29,7 @@ class decoder2D(torch.nn.Module):
 
 
     def forward(self, x):
-        print("Decode 2D initial shape: ", x.shape)
+        # print("Decode 2D initial shape: ", x.shape)
 
         if self.shaping_operation is not None:
             x = self.shaping_operation(x)
@@ -37,8 +37,7 @@ class decoder2D(torch.nn.Module):
         x = list(torch.chunk(x, self.n_planes, dim=3))
 
         x = [torch.squeeze(_x, dim=3) for _x in x ]
-        print(x[0].shape)
-        
+
         for i in range(self.n_planes):
             x[i] = self.plane_decoders[i](x[i])
 
@@ -47,7 +46,7 @@ class decoder2D(torch.nn.Module):
         decoded_image = torch.stack(x, dim=1)
         decoded_image = torch.squeeze(decoded_image, dim=2)
 
-        print("Decode 2D final shape: ", decoded_image.shape)
+        # print("Decode 2D final shape: ", decoded_image.shape)
 
 
         return decoded_image
@@ -61,7 +60,7 @@ class plane_decoder2D(torch.nn.Module):
         # At first glance, the decoders are resnets with configurable depth, run in reverse
 
         # self.initial_convolution = utils.Block2D(
-        #     inplanes    = n_initial_filters, 
+        #     inplanes    = n_initial_filters,
         #     outplanes   = n_initial_filters,
         #     batch_norm  = batch_norm,
         #     use_bias    = use_bias)
@@ -70,8 +69,6 @@ class plane_decoder2D(torch.nn.Module):
 
         self.layers = []
         self.upsample_layers = []
-
-        print(current_n_planes)
 
         for i_layer in range(depth):
             self.layers.append(
@@ -97,6 +94,12 @@ class plane_decoder2D(torch.nn.Module):
             current_n_planes = int(current_n_planes / 2)
             self.add_module('downsample_{}'.format(i_layer), self.upsample_layers[-1])
 
+        self.final_layer = utils.Convolution2D(
+                inplanes    = current_n_planes,
+                outplanes   = 1,
+                batch_norm  = batch_norm,
+                use_bias    = use_bias
+        )
 
     def forward(self, x):
 
@@ -105,6 +108,7 @@ class plane_decoder2D(torch.nn.Module):
             x = self.layers[i](x)
             x = self.upsample_layers[i](x)
 
+        x = self.final_layer(x)
         return x
 
 class decoder3D(torch.nn.Module):
@@ -115,7 +119,7 @@ class decoder3D(torch.nn.Module):
         # At first glance, the decoders are resnets with configurable depth, etc.
 
         # self.initial_convolution = utils.Block3D(
-        #     inplanes    = n_initial_filters, 
+        #     inplanes    = n_initial_filters,
         #     outplanes   = n_initial_filters,
         #     batch_norm  = batch_norm,
         #     use_bias    = use_bias)
@@ -149,10 +153,17 @@ class decoder3D(torch.nn.Module):
             current_n_planes = int(current_n_planes / 2)
             self.add_module('downsample_{}'.format(i_layer), self.upsample_layers[-1])
 
+        self.final_layer = utils.Convolution3D(
+                inplanes    = current_n_planes,
+                outplanes   = 1,
+                batch_norm  = batch_norm,
+                use_bias    = use_bias
+        )
+
 
     def forward(self, x):
 
-        print("Decode 3D initial shape: ", x.shape)
+        # print("Decode 3D initial shape: ", x.shape)
         # return x
 
         # x = self.initial_convolution(inputs)
@@ -161,11 +172,10 @@ class decoder3D(torch.nn.Module):
             x = self.layers[i](x)
             x = self.upsample_layers[i](x)
 
+        x = self.final_layer(x)
 
 
-        print("Decode 3D final shape: ", x.shape)
+        # print("Decode 3D final shape: ", x.shape)
 
 
         return x
-
-

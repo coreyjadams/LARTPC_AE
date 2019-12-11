@@ -28,7 +28,7 @@ class encoder2D(torch.nn.Module):
         self.shaping_operation = None
 
     def forward(self, x):
-        print("Initial input shape: ", x.shape)
+        # print("Initial input shape: ", x.shape)
 
         x = list(torch.chunk(x, self.n_planes, dim=1))
         for i in range(self.n_planes):
@@ -51,7 +51,7 @@ class plane_encoder2D(torch.nn.Module):
         # At first glance, the encoders are resnets with configurable depth, etc.
 
         self.initial_convolution = utils.Convolution2D(
-            inplanes    = 1, 
+            inplanes    = 1,
             outplanes   = n_initial_filters,
             batch_norm  = batch_norm,
             use_bias    = use_bias)
@@ -110,7 +110,7 @@ class encoder3D(torch.nn.Module):
         # At first glance, the encoders are resnets with configurable depth, etc.
 
         self.initial_convolution = utils.Convolution3D(
-            inplanes    = 1, 
+            inplanes    = 1,
             outplanes   = n_initial_filters,
             batch_norm  = batch_norm,
             use_bias    = use_bias)
@@ -148,7 +148,7 @@ class encoder3D(torch.nn.Module):
 
     def forward(self, inputs):
 
-        print("Initial input shape: ", inputs.shape)
+        # print("Initial input shape: ", inputs.shape)
 
         x = self.initial_convolution(inputs)
 
@@ -156,11 +156,6 @@ class encoder3D(torch.nn.Module):
             x = self.layers[i](x)
             x = self.downsample_layers[i](x)
 
-        print(x.shape)
-
         return x
 
         # return self.final_layer(x)
-
-
-

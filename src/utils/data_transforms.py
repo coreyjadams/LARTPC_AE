@@ -86,7 +86,6 @@ def larcvsparse_to_dense_3d(input_array, dense_shape, padding=[60,12,30]):
 
     this_dense_shape = [d for d in dense_shape]
 
-    print(this_dense_shape)
     for i in range(len(this_dense_shape)):
         this_dense_shape[i] += padding[i]
 

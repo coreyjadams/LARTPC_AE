@@ -11,7 +11,7 @@ https://github.com/DeepLearnPhysics/dynamic-gcnn/blob/develop/dgcnn/flags.py
 
 # This class is from here:
 # http://www.aleax.it/Python/5ep.html
-# Which is an incredibly simply and elegenant way 
+# Which is an incredibly simply and elegenant way
 # To enforce singleton behavior
 class Borg:
     _shared_state = {}
@@ -21,16 +21,16 @@ class Borg:
 # This function is to parse strings from argparse into bool
 def str2bool(v):
     '''Convert string to boolean value
-    
-    This function is from stackoverflow: 
+
+    This function is from stackoverflow:
     https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse
-    
+
     Arguments:
         v {str} -- [description]
-    
+
     Returns:
         bool -- [description]
-    
+
     Raises:
         argparse -- [description]
     '''
@@ -44,7 +44,7 @@ def str2bool(v):
 
 class FLAGS(Borg):
     '''This class implements global flags through static variables
-    The static-ness is enforced by inheriting from Borg, which it calls first and 
+    The static-ness is enforced by inheriting from Borg, which it calls first and
     foremost in the constructor.
 
     All classes derived from FLAGS should call this constructor first
@@ -64,7 +64,7 @@ class FLAGS(Borg):
 
     def _set_defaults(self):
         # Parameters controlling training situations
-        self.COMPUTE_MODE          = "CPU"
+        self.COMPUTE_MODE          = "GPU"
         self.TRAINING              = True
         self.MINIBATCH_SIZE        = 2
         self.CHECKPOINT_ITERATION  = 100
@@ -81,11 +81,11 @@ class FLAGS(Borg):
         # To be clear, this is specifying the image mode from larcv ThreadIO,
         # Not the input to the network
 
-        # IO parameters  
+        # IO parameters
         # IO has a 'default' file configuration and an optional
         # 'auxilliary' configuration.  In Train mode, the default
         # is the training data, aux is testing data.
-        # In inference mode, default is the validation data, 
+        # In inference mode, default is the validation data,
         # aux is the outputdata
         self.FILE                  = None
         self.IO_VERBOSITY          = 3
@@ -127,7 +127,7 @@ class FLAGS(Borg):
         self.LATENT_SPACE          = [15, 8, 20]
 
 
-        self.DATA_FORMAT           = "channels_last"
+        self.DATA_FORMAT           = "channels_first"
 
 
     def _add_default_io_configuration(self, parser):
@@ -163,12 +163,12 @@ class FLAGS(Borg):
 
         self._parser = argparse.ArgumentParser(description="Configuration Flags")
 
-        subparsers = self._parser.add_subparsers(title="Modules", 
-                                                 description="Valid subcommands", 
-                                                 dest='mode', 
+        subparsers = self._parser.add_subparsers(title="Modules",
+                                                 description="Valid subcommands",
+                                                 dest='mode',
                                                  help="Available subcommands: train, iotest, inference")
-      
-      
+
+
 
         # train parser
         self.train_parser = subparsers.add_parser("train", help="Train")
@@ -181,7 +181,7 @@ class FLAGS(Borg):
         self.train_parser.add_argument('-ci','--checkpoint-iteration', type=int, default=self.CHECKPOINT_ITERATION,
                                   help='Period (in steps) to store snapshot of weights [default: {}]'.format(self.CHECKPOINT_ITERATION))
 
-        self.train_parser.add_argument('-o', '--optimizer', default=self.OPTIMIZER, type=str, 
+        self.train_parser.add_argument('-o', '--optimizer', default=self.OPTIMIZER, type=str,
             choices=['lars', 'rmsprop', 'adam'],
             help="Optimizer to use, must be lars, rmsprop, adam [default: {}]".format(self.OPTIMIZER))
 
@@ -211,7 +211,7 @@ class FLAGS(Borg):
         self.inference_parser = self._add_default_io_configuration(self.inference_parser)
         self.inference_parser = self._add_aux_io_configuration(self.inference_parser)
         self.inference_parser = self._add_core_configuration(self.inference_parser)
-       
+
 
     def _add_core_configuration(self, parser):
         # These are core parameters that are important for all modes:
@@ -260,7 +260,7 @@ class FLAGS(Borg):
         args = self._parser.parse_args()
         # else:
         #     # Can't do f-strings, this code runs python 2.7.
-        #     # I am working on a 3.6 transisition ... 
+        #     # I am working on a 3.6 transisition ...
         #     args_str = ' '.join("--{key}={val}".format(key=key, val=val) for key,val in hps_dict.items())
         #     args = self._parser.parse_args(mode+' '+args_str)
         self.update(vars(args))
@@ -271,7 +271,7 @@ class FLAGS(Borg):
 
     def dump_config(self):
         print(self.__str__())
-            
+
 
     def get_config(str):
         return str.__str__()
@@ -299,12 +299,12 @@ class FLAGS(Borg):
         except AttributeError:
             return "ERROR: call parse_args()"
 
-                    
+
     def update(self, args):
         for name,value in args.items():
             if name in ['func']: continue
             setattr(self, name.upper(), args[name])
-        # Take special care to reset the keyword label attribute 
+        # Take special care to reset the keyword label attribute
         # to match the label mode:
 
     def _add_default_network_configuration(self, parser):
@@ -321,28 +321,28 @@ class dimnet(FLAGS):
 
     def _set_defaults(self):
         # Parameters to control the network implementation
-        self.BATCH_NORM                             = False
-        self.USE_BIAS                               = False
+        self.BATCH_NORM                             = True
+        self.USE_BIAS                               = True
         self.RESIDUAL                               = False
 
-        # These are parameters that are configured for encoders 
+        # These are parameters that are configured for encoders
         # and decoders in 2D and 3D.
 
-        self.ENCODER_2D_N_INITIAL_FILTERS           = 1
-        self.ENCODER_2D_BLOCKS_PER_LAYER            = 1
+        self.ENCODER_2D_N_INITIAL_FILTERS           = 8
+        self.ENCODER_2D_BLOCKS_PER_LAYER            = 2
         self.ENCODER_2D_NETWORK_DEPTH               = 4
 
 
-        self.ENCODER_3D_N_INITIAL_FILTERS           = 1
-        self.ENCODER_3D_BLOCKS_PER_LAYER            = 1
+        self.ENCODER_3D_N_INITIAL_FILTERS           = 8
+        self.ENCODER_3D_BLOCKS_PER_LAYER            = 2
         self.ENCODER_3D_NETWORK_DEPTH               = 4
 
         # self.DECODER_2D_N_INITIAL_FILTERS           = 6
-        self.DECODER_2D_BLOCKS_PER_LAYER            = 1
+        self.DECODER_2D_BLOCKS_PER_LAYER            = 2
         self.DECODER_2D_NETWORK_DEPTH               = 4
 
         # self.DECODER_3D_N_INITIAL_FILTERS           = 6
-        self.DECODER_3D_BLOCKS_PER_LAYER            = 1
+        self.DECODER_3D_BLOCKS_PER_LAYER            = 2
         self.DECODER_3D_NETWORK_DEPTH               = 4
 
         self.NPLANES                                = 3
@@ -379,65 +379,65 @@ class dimnet(FLAGS):
         parser.add_argument('--nplanes', type=int, default=self.NPLANES,
             help="Number of planes to split the initial image into [default: {}]".format(self.NPLANES))
 
-        parser.add_argument('--encoder-2d-n-initial-filters', type=int, 
+        parser.add_argument('--encoder-2d-n-initial-filters', type=int,
                             default=self.ENCODER_2D_N_INITIAL_FILTERS,
                             help="Number of initial filters in 2d encoder [default: {}]".format(
                                     self.ENCODER_2D_N_INITIAL_FILTERS)
                             )
-        parser.add_argument('--encoder-2d-blocks-per-layer', type=int, 
+        parser.add_argument('--encoder-2d-blocks-per-layer', type=int,
                             default=self.ENCODER_2D_BLOCKS_PER_LAYER,
                             help="Number of blocks per resolution layer in the 2D encoder [default: {}]".format(
                                     self.ENCODER_2D_BLOCKS_PER_LAYER)
                             )
-        parser.add_argument('--encoder-2d-network-depth', type=int, 
+        parser.add_argument('--encoder-2d-network-depth', type=int,
                             default=self.ENCODER_2D_NETWORK_DEPTH,
                             help="Number of resolution changes in the 2D encoder (downsampling) [default: {}]".format(
                                     self.ENCODER_2D_NETWORK_DEPTH)
                             )
 
-        parser.add_argument('--encoder-3d-n-initial-filters', type=int, 
+        parser.add_argument('--encoder-3d-n-initial-filters', type=int,
                             default=self.ENCODER_3D_N_INITIAL_FILTERS,
                             help="Number of initial filters in 3d encoder [default: {}]".format(
                                 self.ENCODER_3D_N_INITIAL_FILTERS)
                             )
-        parser.add_argument('--encoder-3d-blocks-per-layer', type=int, 
+        parser.add_argument('--encoder-3d-blocks-per-layer', type=int,
                             default=self.ENCODER_3D_BLOCKS_PER_LAYER,
                             help="Number of blocks per resolution layer in the 3D encoder [default: {}]".format(
                                 self.ENCODER_3D_BLOCKS_PER_LAYER)
                             )
-        parser.add_argument('--encoder-3d-network-depth', type=int, 
+        parser.add_argument('--encoder-3d-network-depth', type=int,
                             default=self.ENCODER_3D_NETWORK_DEPTH,
                             help="Number of resolution changes in the 3D encoder (downsampling) [default: {}]".format(
                                 self.ENCODER_3D_NETWORK_DEPTH)
                             )
 
-        # parser.add_argument('--decoder_2d-n-initial-filters', type=int, 
+        # parser.add_argument('--decoder_2d-n-initial-filters', type=int,
         #                     default=self.DECODER_2D_N_INITIAL_FILTERS,
         #                     help="Number of initial filters in 2d decoder [default: {}]".format(
         #                         self.DECODER_2D_N_INITIAL_FILTERS)
         #                     )
-        parser.add_argument('--decoder-2d-blocks-per-layer', type=int, 
+        parser.add_argument('--decoder-2d-blocks-per-layer', type=int,
                             default=self.DECODER_2D_BLOCKS_PER_LAYER,
                             help="Number of blocks per resolution layer in the 2D decoder [default: {}]".format(
                                 self.DECODER_2D_BLOCKS_PER_LAYER)
                             )
-        parser.add_argument('--decoder-2d-network-depth', type=int, 
+        parser.add_argument('--decoder-2d-network-depth', type=int,
                             default=self.DECODER_2D_NETWORK_DEPTH,
                             help="Number of resolution changes in the 2D decoder (upsampling) [default: {}]".format(
                                 self.DECODER_2D_NETWORK_DEPTH)
                             )
 
-        # parser.add_argument('--decoder-3d-n-initial-filters', type=int, 
+        # parser.add_argument('--decoder-3d-n-initial-filters', type=int,
         #                     default=self.DECODER_3D_N_INITIAL_FILTERS,
         #                     help="Number of initial filters in 3d decoder [default: {}]".format(
         #                         self.DECODER_3D_N_INITIAL_FILTERS)
         #                     )
-        parser.add_argument('--decoder_3d-blocks-per-layer', type=int, 
+        parser.add_argument('--decoder_3d-blocks-per-layer', type=int,
                             default=self.DECODER_3D_BLOCKS_PER_LAYER,
                             help="Number of blocks per resolution layer in the 3D decoder [default: {}]".format(
                                 self.DECODER_3D_BLOCKS_PER_LAYER)
                             )
-        parser.add_argument('--decoder-3d-network-depth', type=int, 
+        parser.add_argument('--decoder-3d-network-depth', type=int,
                             default=self.DECODER_3D_NETWORK_DEPTH,
                             help="Number of resolution changes in the 3D decoder (upsampling) [default: {}]".format(
                                 self.DECODER_3D_NETWORK_DEPTH)
@@ -462,5 +462,3 @@ class dimnet(FLAGS):
 
 
         return parser
-
-
