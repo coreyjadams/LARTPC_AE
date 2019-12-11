@@ -9,7 +9,7 @@ import torch
 import horovod.torch as hvd
 hvd.init()
 
-from larcv.distributed_larcv_interface import larcv_interface
+from larcv.distributed_queue_interface import queue_interface
 
 from mpi4py import MPI
 comm = MPI.COMM_WORLD
@@ -34,7 +34,7 @@ def lambda_warmup(epoch):
     if epoch <= flat_warmup:
         return 1.0
     elif epoch < flat_warmup + linear_warmup:
-        return 1.0 + (target - 1) * (epoch - flat_warmup) / linear_warmup 
+        return 1.0 + (target - 1) * (epoch - flat_warmup) / linear_warmup
     elif epoch <= flat_warmup + linear_warmup + full:
         return target
     else:
@@ -58,9 +58,9 @@ def lambda_warmup(epoch):
 # cycle_len = 0.8
 
 # def one_cycle_clr(step):
-    
+
 #     peak = peak_lr / FLAGS.LEARNING_RATE
-    
+
 #     cycle_steps  = int(FLAGS.ITERATIONS*cycle_len)
 #     end_steps = FLAGS.ITERATIONS - cycle_steps
 #     # Which cycle are we in?
@@ -72,11 +72,11 @@ def lambda_warmup(epoch):
 
 #     if cycle < 1:
 # #         base_multiplier *= 0.5
-        
+
 #         if intra_step > cycle_steps*0.5:
 #             intra_step = cycle_steps - intra_step
 
-#         value = intra_step * (peak) /(0.5*cycle_steps) 
+#         value = intra_step * (peak) /(0.5*cycle_steps)
 
 #     else:
 #         value = (intra_step / end_steps)*-1.0
@@ -100,13 +100,13 @@ class distributed_trainer(trainercore):
         # search for parameters relevant for distributed computing here
 
         # Put the IO rank as the last rank in the COMM, since rank 0 does tf saves
-        root_rank = hvd.size() - 1 
+        root_rank = hvd.size() - 1
 
         if FLAGS.COMPUTE_MODE == "GPU":
             os.environ['CUDA_VISIBLE_DEVICES'] = str(hvd.local_rank())
-            
 
-        self._larcv_interface = larcv_interface(root=root_rank)
+
+        self._larcv_interface = queue_interface()
         self._iteration       = 0
         self._rank            = hvd.rank()
         self._cleanup         = []
@@ -119,13 +119,13 @@ class distributed_trainer(trainercore):
     def __del__(self):
         if hvd.rank() == 0:
             trainercore.__del__(self)
-            
+
 
     def save_model(self):
 
         if hvd.rank() == 0:
             trainercore.save_model(self)
-            
+
 
 
 
@@ -136,7 +136,7 @@ class distributed_trainer(trainercore):
 
         trainercore.init_optimizer(self)
 
-        # Wrap the optimizer in a learning rate controller to ensure warmup and 
+        # Wrap the optimizer in a learning rate controller to ensure warmup and
         # decayed rate at the end.
 
         # Important: this lambda takes 'epoch' as an argument but it's actually
@@ -147,7 +147,7 @@ class distributed_trainer(trainercore):
             self._opt, lambda_warmup, last_epoch=-1)
 
 
-        self._opt = hvd.DistributedOptimizer(self._opt, named_parameters=self._net.named_parameters())
+        self._opt = hvd.DistributedOptimizer(self._opt, named_parameters=self._all_parameters)
 
 
 
@@ -166,7 +166,7 @@ class distributed_trainer(trainercore):
 
         if self._rank == 0:
             FLAGS.dump_config()
-            
+
 
         self._initialize_io()
 
@@ -177,16 +177,17 @@ class distributed_trainer(trainercore):
         self.init_network()
 
 
-        if FLAGS.TRAINING: 
-            self._net.train(True)
+        if FLAGS.TRAINING:
+            for net in self._nets: self._nets[net].train(True)
 
 
 
         if hvd.rank() == 0:
-            n_trainable_parameters = 0
-            for var in self._net.parameters():
-                n_trainable_parameters += numpy.prod(var.shape)
-            print("Total number of trainable parameters in this network: {}".format(n_trainable_parameters))
+            for net in self._nets:
+                n_trainable_parameters = 0
+                for var in self._nets[net].parameters():
+                    n_trainable_parameters += numpy.prod(var.shape)
+                print(f"Total number of trainable parameters in {net}: {n_trainable_parameters}")
 
         self.init_optimizer()
 
@@ -210,13 +211,14 @@ class distributed_trainer(trainercore):
 
 
         # Broadcast the state of the model:
-        hvd.broadcast_parameters(self._net.state_dict(), root_rank = 0)
+        for net in self._nets:
+            hvd.broadcast_parameters(self._nets[net].state_dict(), root_rank = 0)
 
 
         if FLAGS.COMPUTE_MODE == "CPU":
             pass
         if FLAGS.COMPUTE_MODE == "GPU":
-            self._net.cuda()
+            for net in self._nets: self._nets[net].cuda()
 
         # comm.bcast(self._global_step, root = 0)
         # hvd.broadcast_optimizer_state(self._opt, root_rank = 0)
@@ -227,16 +229,16 @@ class distributed_trainer(trainercore):
         if hvd.rank() == 0:
             trainercore.summary(self, metrics, saver)
         return
-        
+
     def summary_images(self, logits_image, labels_image, saver=""):
         if hvd.rank() == 0:
             trainercore.summary_images(self, logits_image, labels_image, saver)
         return
 
-    def _compute_metrics(self, logits, minibatch_data, loss):
+    def _compute_metrics(self, forward_results, loss):
         # This function calls the parent function which computes local metrics.
         # Then, it performs an all reduce on all metrics:
-        metrics = trainercore._compute_metrics(self, logits, minibatch_data, loss)
+        metrics = trainercore._compute_metrics(self, forward_results, loss)
 
 
         for key in metrics:

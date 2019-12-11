@@ -229,7 +229,7 @@ class trainercore(object):
 
     def init_optimizer(self):
 
-        all_parameters = itertools.chain(
+        self._all_parameters = itertools.chain(
             self._nets['encoder_2d'].parameters(),
             self._nets['encoder_3d'].parameters(),
             self._nets['decoder_2d'].parameters(),
@@ -238,15 +238,15 @@ class trainercore(object):
         if FLAGS.OPTIMIZER == "adam":
             # Create an optimizer:
             if FLAGS.LEARNING_RATE <= 0:
-                self._opt = torch.optim.Adam(all_parameters)
+                self._opt = torch.optim.Adam(self._all_parameters)
             else:
-                self._opt = torch.optim.Adam(all_parameters, FLAGS.LEARNING_RATE)
+                self._opt = torch.optim.Adam(self._all_parameters, FLAGS.LEARNING_RATE)
         else:
             # Create an optimizer:
             if FLAGS.LEARNING_RATE <= 0:
-                self._opt = torch.optim.SGD(all_parameters)
+                self._opt = torch.optim.SGD(self._all_parameters)
             else:
-                self._opt = torch.optim.SGD(all_parameters, FLAGS.LEARNING_RATE)
+                self._opt = torch.optim.SGD(self._all_parameters, FLAGS.LEARNING_RATE)
 
 
 
@@ -473,61 +473,56 @@ class trainercore(object):
             return
 
 
-    def summary_images(self, forward_results, saver=""):
+    def summary_images(self, minibatch_data, forward_results, saver=""):
 
-        return
+        if self._global_step % 1 * FLAGS.SUMMARY_ITERATION == 0:
+        # if self._global_step % 25 * FLAGS.SUMMARY_ITERATION == 0:
 
-        # if self._global_step % 1 * FLAGS.SUMMARY_ITERATION == 0:
-        if self._global_step % 25 * FLAGS.SUMMARY_ITERATION == 0:
+            active_saver = self._aux_saver if saver == "test" else self._saver
 
-            # print(logits_image.shape)
-            # print(labels_image.shape)
-            logits_by_plane = torch.chunk(logits_image[0], chunks=FLAGS.NPLANES,dim=1)
-            labels_by_plane = torch.chunk(labels_image[0], chunks=FLAGS.NPLANES,dim=0)
-            # print(logits_by_plane[0].shape)
-            # print(logits_by_plane[1].shape)
-            # print(logits_by_plane[2].shape)
+            # We have to make the following images:
+            # 2D in planes 0 to N for true image and decoded image (6 images)
+            # 3D in projections XY, YZ, ZX for true image and decoded image (6 images)
+            # 3D in projections XY, YZ, ZX for reconstructed image (3 images)
+
+
+            # Let's make the 2D images first:
+            true_images_by_plane = torch.chunk(minibatch_data['data2d'][0], chunks=FLAGS.NPLANES, dim=0)
+
+            print("Original 2D shape: ",forward_results['decoded_2d'][0].shape)
+            decoded_images_by_plane = torch.chunk(forward_results['decoded_2d'][0], chunks=FLAGS.NPLANES, dim=0)
+            print("Chunked 2D shape: ",decoded_images_by_plane[0].shape)
 
 
             for plane in range(FLAGS.NPLANES):
-                val, prediction = torch.max(logits_by_plane[plane], dim=0)
-                # This is a reshape and H/W swap:
-                prediction = prediction.view(
-                    [1, prediction.shape[-2], prediction.shape[-1]]
-                    ).float()
 
+                active_saver.add_image(f"2d/true_image/plane_{plane}",
+                    true_images_by_plane[plane], self._global_step)
+                active_saver.add_image(f"2d/decoded_image/plane_{plane}",
+                    decoded_images_by_plane[plane], self._global_step)
 
+            # Now, let's do the 3D images.
 
-                #TODO - need to address this function here!!!
+            original_image = minibatch_data['data3d'][0]
+            decoded_image  = forward_results['decoded_3d'][0]
+            reconstructed_image    = forward_results['decoded_2d_to_3d'][0]
 
+            print("original_image.shape: ", original_image.shape)
+            print("decoded_image.shape: ", decoded_image.shape)
+            print("reconstructed_image.shape: ", reconstructed_image.shape)
 
-                labels = labels_by_plane[plane].view(
-                    [1, labels_by_plane[plane].shape[-2], labels_by_plane[plane].shape[-1]]
-                    )
-                # The images are in the format (Plane, W, H)
-                # Need to transpose the last two dims in order to meet the (CHW) ordering
-                # of tensorboardX
+            for projection_axis in [1,2,3]:
+                original_projected = torch.sum(original_image, dim=projection_axis)
+                active_saver.add_image(f"3d/true_image/projection_{projection_axis}",
+                    original_projected, self._global_step)
 
+                decoded_projected = torch.sum(decoded_image, dim=projection_axis)
+                active_saver.add_image(f"3d/decoded_image/projection_{projection_axis}",
+                    decoded_projected, self._global_step)
 
-                # Values get mapped to gray scale, so put them in the range (0,1)
-                labels[labels == 1] = 0.5
-                labels[labels == 2] = 1.0
-
-                prediction[prediction == 1] = 0.5
-                prediction[prediction == 2] = 1.0
-
-
-                if saver == "test":
-                    self._aux_saver.add_image("prediction/plane_{}".format(plane),
-                        prediction, self._global_step)
-                    self._aux_saver.add_image("label/plane_{}".format(plane),
-                        labels, self._global_step)
-
-                else:
-                    self._saver.add_image("prediction/plane_{}".format(plane),
-                        prediction, self._global_step)
-                    self._saver.add_image("label/plane_{}".format(plane),
-                        labels, self._global_step)
+                reconstructed_projected = torch.sum(reconstructed_image, dim=projection_axis)
+                active_saver.add_image(f"3d/reconstructed_image/projection_{projection_axis}",
+                    reconstructed_projected, self._global_step)
 
         return
 
@@ -724,7 +719,7 @@ class trainercore(object):
         if verbose: print("Completed Log")
 
         self.summary(metrics, saver="train")
-        self.summary_images(forward_results, saver="train")
+        self.summary_images(minibatch_data, forward_results, saver="train")
         if verbose: print("Summarized")
 
 
@@ -768,7 +763,7 @@ class trainercore(object):
 
             self.log(metrics, saver="test")
             self.summary(metrics, saver="test")
-            self.summary_images(forward_results, saver="test")
+            self.summary_images(minibatch_data, forward_results, saver="test")
 
             if not FLAGS.DISTRIBUTED:
                 self._larcv_interface.next('aux')
@@ -903,7 +898,7 @@ class trainercore(object):
 
             self.log(metrics, saver="ana")
             # self.summary(metrics, saver="test")
-            # self.summary_images(forward_results, saver="ana")
+            # self.summary_images(minibatch_data, forward_results, saver="ana")
 
         self._larcv_interface.next('aux')
 
